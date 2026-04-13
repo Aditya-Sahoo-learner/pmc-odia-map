@@ -79,7 +79,7 @@
         // CONFIGURATION
         // ==============================================================================
         // IMPORTANT: Ensure your Google Sheet is published to the web as a CSV.
-        const SHEETS_CSV_URL = 'PASTE_GOOGLE_SHEETS_CSV_URL_HERE';
+        const SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRIQRpA8FCaho15StGnRDBedNNfZuKXgVt8wHzmHrGwC0CFYzCFtGPSDjcxCtm3J70aG3GpV2-HmRqv/pub?gid=547405241&single=true&output=csv';
 
 
         // ==============================================================================
@@ -120,7 +120,7 @@
         // ==============================================================================
         
         // Fetch and parse the CSV from Google Sheets
-        if (SHEETS_CSV_URL !== 'PASTE_GOOGLE_SHEETS_CSV_URL_HERE') {
+        if (SHEETS_CSV_URL !== 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRIQRpA8FCaho15StGnRDBedNNfZuKXgVt8wHzmHrGwC0CFYzCFtGPSDjcxCtm3J70aG3GpV2-HmRqv/pub?gid=547405241&single=true&output=csv') {
             Papa.parse(SHEETS_CSV_URL, {
                 download: true,
                 header: true,
@@ -134,7 +134,7 @@
                 }
             });
         } else {
-            console.warn("Please replace 'PASTE_GOOGLE_SHEETS_CSV_URL_HERE' with a valid Google Sheets CSV URL.");
+            console.warn("Please replace 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRIQRpA8FCaho15StGnRDBedNNfZuKXgVt8wHzmHrGwC0CFYzCFtGPSDjcxCtm3J70aG3GpV2-HmRqv/pub?gid=547405241&single=true&output=csv' with a valid Google Sheets CSV URL.");
         }
 
         function processMapData(rows) {
