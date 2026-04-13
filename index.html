@@ -1,1 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaflet Map from Google Sheets</title>
 
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+
+    <style>
+        /* Ensure the map occupies the full screen */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Popup container styling for graceful overflow and layout */
+        .custom-popup {
+            max-width: 320px;
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 5px; /* Prevent scrollbar overlap */
+        }
+        .custom-popup h3 {
+            margin: 0 0 5px 0;
+            font-size: 1.25em;
+            color: #333;
+        }
+        .custom-popup p.date {
+            margin: 0 0 12px 0;
+            font-size: 0.85em;
+            color: #666;
+            font-weight: bold;
+        }
+        .custom-popup img {
+            width: 100%;
+            height: auto;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: block;
+            background-color: #f0f0f0; /* Placeholder color while loading */
+        }
+        .custom-popup iframe {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border: none;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .custom-popup a.fallback-link {
+            display: inline-block;
+            margin-bottom: 10px;
+            word-break: break-all;
+            color: #0066cc;
+            text-decoration: none;
+        }
+        .custom-popup a.fallback-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <script>
+        // ==============================================================================
+        // CONFIGURATION
+        // ==============================================================================
+        // IMPORTANT: Ensure your Google Sheet is published to the web as a CSV.
+        const SHEETS_CSV_URL = 'PASTE_GOOGLE_SHEETS_CSV_URL_HERE';
+
+
+        // ==============================================================================
+        // MAP INITIALIZATION
+        // ==============================================================================
+        // Set a global sensible default view (latitude 20, longitude 0, zoom level 2)
+        const map = L.map('map').setView([20, 0], 2);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+
+        // ==============================================================================
+        // UTILITY FUNCTIONS
+        // ==============================================================================
+        
+        // Escape HTML to prevent XSS attacks when displaying user-generated text
+        function escapeHTML(str) {
+            if (!str) return '';
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(str));
+            return p.innerHTML;
+        }
+
+        // Extract the 11-character YouTube Video ID from various YouTube URL formats
+        function getYouTubeVideoId(url) {
+            const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+            const match = url.match(regExp);
+            return (match && match[1]) ? match[1] : null;
+        }
+
+
+        // ==============================================================================
+        // DATA PROCESSING & POPULATION
+        // ==============================================================================
+        
+        // Fetch and parse the CSV from Google Sheets
+        if (SHEETS_CSV_URL !== 'PASTE_GOOGLE_SHEETS_CSV_URL_HERE') {
+            Papa.parse(SHEETS_CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    console.log(`CSV Parsed successfully. Processing ${results.data.length} rows...`);
+                    processMapData(results.data);
+                },
+                error: function(error) {
+                    console.error("PapaParse encountered an error fetching/parsing the CSV:", error);
+                }
+            });
+        } else {
+            console.warn("Please replace 'PASTE_GOOGLE_SHEETS_CSV_URL_HERE' with a valid Google Sheets CSV URL.");
+        }
+
+        function processMapData(rows) {
+            rows.forEach((row, index) => {
+                // 1. FILTER: Keep only rows where 'Approved' is TRUE (case-insensitive)
+                const approvedStatus = row.Approved ? row.Approved.trim().toUpperCase() : '';
+                if (approvedStatus !== 'TRUE') {
+                    return; // Skip unapproved rows
+                }
+
+                // 2. PARSE COORDINATES: Ensure Latitude and Longitude are valid numbers
+                const lat = parseFloat(row.Latitude);
+                const lng = parseFloat(row.Longitude);
+
+                if (isNaN(lat) || isNaN(lng)) {
+                    console.warn(`Row ${index + 2}: Invalid or missing coordinates. Skipping row.`, row);
+                    return;
+                }
+
+                // 3. SANITIZE TEXT FIELDS
+                const title = escapeHTML(row.Title);
+                const date = escapeHTML(row.Date);
+
+                // 4. BUILD POPUP HTML
+                let popupContent = `<div class="custom-popup">`;
+
+                if (title) popupContent += `<h3>${title}</h3>`;
+                if (date) popupContent += `<p class="date">${date}</p>`;
+
+                // Process Photos: Comma-separated list of image URLs
+                if (row.Photos && row.Photos.trim() !== '') {
+                    const photoUrls = row.Photos.split(',');
+                    photoUrls.forEach(urlStr => {
+                        const url = urlStr.trim();
+                        if (url) {
+                            // Strip quotes just in case, to prevent HTML injection in src attribute
+                            const safeUrl = url.replace(/"/g, '&quot;');
+                            popupContent += `<img src="${safeUrl}" alt="Location Photo" loading="lazy">`;
+                        }
+                    });
+                }
+
+                // Process YouTube Links: Comma-separated list of URLs
+                if (row.YouTube && row.YouTube.trim() !== '') {
+                    const ytUrls = row.YouTube.split(',');
+                    ytUrls.forEach(urlStr => {
+                        const url = urlStr.trim();
+                        if (!url) return;
+
+                        const videoId = getYouTubeVideoId(url);
+                        const safeUrl = url.replace(/"/g, '&quot;').replace(/</g, '&lt;'); // Basic sanitization
+
+                        if (videoId) {
+                            // Embed iframe for valid YouTube URLs
+                            popupContent += `
+                                <iframe 
+                                    src="https://www.youtube.com/embed/${videoId}" 
+                                    title="YouTube video player" 
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                    allowfullscreen>
+                                </iframe>`;
+                        } else {
+                            // Fallback anchor link if it's not a standard parsable YouTube link
+                            popupContent += `<a href="${safeUrl}" class="fallback-link" target="_blank" rel="noopener noreferrer">View Video Attachment</a>`;
+                        }
+                    });
+                }
+
+                popupContent += `</div>`; // Close popup container
+
+                // 5. ADD MARKER TO MAP
+                const marker = L.marker([lat, lng]).addTo(map);
+                marker.bindPopup(popupContent);
+            });
+        }
+    </script>
+</body>
+</html>
